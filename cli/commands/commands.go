@@ -109,6 +109,7 @@ func BuildRootCommand() *cobra.Command {
 	root.AddCommand(initialize())
 	root.AddCommand(execute())
 	root.AddCommand(finalize())
+	root.AddCommand(revert())
 	root.AddCommand(restartServices)
 	root.AddCommand(killServices)
 	root.AddCommand(Agent())
@@ -445,6 +446,24 @@ func finalize() *cobra.Command {
 	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "print the output stream from all substeps")
 
 	return addHelpToCommand(cmd, FinalizeHelp)
+}
+
+func revert() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "revert",
+		Short: "reverts the upgrade and returns the cluster to its original state",
+		Long:  "reverts the upgrade and returns the cluster to its original state",
+		Run: func(cmd *cobra.Command, args []string) {
+			client := connectToHub()
+			err := commanders.Revert(client)
+			if err != nil {
+				gplog.Error(err.Error())
+				os.Exit(1)
+			}
+		},
+	}
+
+	return cmd
 }
 
 func parsePorts(val string) ([]uint32, error) {

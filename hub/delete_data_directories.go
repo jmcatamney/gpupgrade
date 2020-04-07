@@ -12,20 +12,34 @@ import (
 )
 
 func DeleteMirrorAndStandbyDirectories(agentConns []*Connection, cluster *greenplum.Cluster) error {
+	return DeleteDataDirectories(agentConns, cluster, false)
+}
+
+func DeleteSegmentAndStandbyDirectories(agentConns []*Connection, cluster *greenplum.Cluster) error {
+	return DeleteDataDirectories(agentConns, cluster, true)
+}
+
+func DeleteDataDirectories(agentConns []*Connection, cluster *greenplum.Cluster, includePrimaries bool) error {
 	wg := sync.WaitGroup{}
 	errChan := make(chan error, len(agentConns))
 
 	for _, conn := range agentConns {
 		conn := conn
 
-		mirrorsIncludingStandby := func(seg *greenplum.SegConfig) bool {
-			return seg.Hostname == conn.Hostname &&
-				(seg.Role == greenplum.MirrorRole)
+		filterFunc := func(seg *greenplum.SegConfig) bool {
+			if seg.Hostname != conn.Hostname {
+				return false
+			}
+
+			if includePrimaries {
+				return !(seg.ContentID == -1 && seg.Role == greenplum.PrimaryRole)
+			}
+			return seg.Role == greenplum.MirrorRole
 		}
 
-		segments := cluster.SelectSegments(mirrorsIncludingStandby)
+		segments := cluster.SelectSegments(filterFunc)
 		if len(segments) == 0 {
-			// This can happen if there are no mirrors or standby on a host
+			// This can happen if there are no segments matching the filter on a host
 			continue
 		}
 
@@ -41,7 +55,7 @@ func DeleteMirrorAndStandbyDirectories(agentConns []*Connection, cluster *greenp
 
 			_, err := c.AgentClient.DeleteDirectories(context.Background(), req)
 			if err != nil {
-				gplog.Error("Error deleting segment data directories on host %s: %s",
+				gplog.Error("Error deleting data directories on host %s: %s",
 					c.Hostname, err.Error())
 				errChan <- err
 			}
